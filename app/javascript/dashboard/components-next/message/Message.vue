@@ -45,8 +45,13 @@ import WhatsappFlowResponseBubble from './bubbles/WhatsappFlowResponse.vue';
 import WhatsappReferral from './bubbles/Text/WhatsappReferral.vue';
 
 import MessageError from './MessageError.vue';
+import GroupSenderLabel from './GroupSenderLabel.vue';
 import ContextMenu from 'dashboard/modules/conversations/components/MessageContextMenu.vue';
 import { useBranding } from 'shared/composables/useBranding';
+import {
+  getGroupSenderName,
+  getGroupSenderAvatarUrl,
+} from './helpers/groupSender';
 
 /**
  * @typedef {Object} Attachment
@@ -232,6 +237,13 @@ const isBotOrAgentMessage = computed(() => {
 });
 
 /**
+ * Name of the individual participant who authored this message inside a
+ * group conversation (published by bridges via content_attributes).
+ */
+const groupSenderName = computed(() => getGroupSenderName(props));
+const groupSenderAvatarUrl = computed(() => getGroupSenderAvatarUrl(props));
+
+/**
  * Computes the message orientation based on sender type and message type
  * @returns {import('vue').ComputedRef<'left'|'right'|'center'>} The computed orientation
  */
@@ -257,7 +269,9 @@ const flexOrientationClass = computed(() => {
 
 const gridClass = computed(() => {
   const map = {
-    [ORIENTATION.LEFT]: 'grid grid-cols-1fr',
+    [ORIENTATION.LEFT]: groupSenderName.value
+      ? 'grid grid-cols-[24px_1fr]'
+      : 'grid grid-cols-1fr',
     [ORIENTATION.RIGHT]: 'grid grid-cols-[1fr_24px]',
   };
 
@@ -266,7 +280,12 @@ const gridClass = computed(() => {
 
 const gridTemplate = computed(() => {
   const map = {
-    [ORIENTATION.LEFT]: `
+    [ORIENTATION.LEFT]: groupSenderName.value
+      ? `
+      "avatar bubble"
+      "spacer meta"
+    `
+      : `
       "bubble"
       "meta"
     `,
@@ -287,9 +306,10 @@ const shouldGroupWithNext = computed(() => {
 
 const shouldShowAvatar = computed(() => {
   if (props.messageType === MESSAGE_TYPES.ACTIVITY) return false;
-  if (orientation.value === ORIENTATION.LEFT) return false;
+  if (orientation.value === ORIENTATION.LEFT && groupSenderName.value)
+    return true;
 
-  return true;
+  return orientation.value !== ORIENTATION.LEFT;
 });
 
 const componentToRender = computed(() => {
@@ -472,6 +492,13 @@ function handleReplyTo() {
 }
 
 const avatarInfo = computed(() => {
+  if (orientation.value === ORIENTATION.LEFT && groupSenderName.value) {
+    return {
+      name: groupSenderName.value,
+      src: groupSenderAvatarUrl.value,
+    };
+  }
+
   if (props.contentAttributes?.externalEcho) {
     const { name, avatar_url, channel_type, medium, voice_enabled } =
       inbox.value;
@@ -589,9 +616,16 @@ provideMessageContext({
           'ltr:ml-8 rtl:mr-8 justify-end': orientation === ORIENTATION.RIGHT,
           'ltr:mr-8 rtl:ml-8': orientation === ORIENTATION.LEFT,
           'flex-col items-start gap-2': shouldShowWhatsappReferral,
+          'flex-col items-start gap-1':
+            groupSenderName && !shouldShowWhatsappReferral,
         }"
         @contextmenu="openContextMenu($event)"
       >
+        <GroupSenderLabel
+          v-if="groupSenderName"
+          :name="groupSenderName"
+          :avatar-url="groupSenderAvatarUrl"
+        />
         <WhatsappReferral
           v-if="shouldShowWhatsappReferral"
           :referral="contentAttributes.referral"
