@@ -1,0 +1,72 @@
+# Sincroniza o develop do fork com o chatwoot/chatwoot oficial e, quando há
+# novidade, publica a imagem atualizada no GHCR na mesma execução (o push feito
+# com o GITHUB_TOKEN não dispara outros workflows, por isso o publish é chamado
+# via workflow_call). Nossa feature (rótulo de autor nos grupos) vive no
+# histórico do develop, então o merge do upstream a mantém aplicada — sem
+# "reaplicar" manualmente. Em conflito: a sync falha e abre issue para revisão.
+name: Sync with upstream (chatwoot/chatwoot)
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
+    steps:
+      - name: Checkout develop (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream/develop
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote add upstream https://github.com/chatwoot/chatwoot.git
+          git fetch upstream develop
+
+          BEFORE=$(git rev-parse HEAD)
+          if git merge --no-edit upstream/develop; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" = "$AFTER" ]; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "Upstream sem novidades — nada a fazer."
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              git push origin develop
+              echo "Pushed: $AFTER"
+            fi
+          else
+            git merge --abort || true
+            gh issue create \
+              --title "Sync upstream falhou: conflito no merge" \
+              --body "O merge automático de \`chatwoot/chatwoot@develop\` conflitou. Resolva manualmente (fetch upstream + merge develop) e reabra a sync. Última execução: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              || echo "Não foi possível abrir a issue (ver permissões)."
+            exit 1
+          fi
+
+  publish:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true'
+    uses: ./.github/workflows/publish_ghcr.yml
+    permissions:
+      contents: read
+      packages: write
