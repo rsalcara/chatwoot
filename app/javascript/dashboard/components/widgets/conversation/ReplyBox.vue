@@ -17,6 +17,7 @@ import CopilotEditorSection from './CopilotEditorSection.vue';
 import MessageSignatureMissingAlert from './MessageSignatureMissingAlert.vue';
 import ReplyBoxBanner from './ReplyBoxBanner.vue';
 import QuotedEmailPreview from './QuotedEmailPreview.vue';
+import InteractiveComposer from 'dashboard/components-next/Conversation/InteractiveComposer.vue';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 import WootMessageEditor from 'dashboard/components/widgets/WootWriter/Editor.vue';
 import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
@@ -84,6 +85,7 @@ export default {
     CopilotEditorSection,
     CopilotReplyBottomPanel,
     ConversationResolveAttributesModal,
+    InteractiveComposer,
   },
   mixins: [inboxMixin, fileUploadMixin],
   emits: ['toggleEditorSize'],
@@ -165,6 +167,7 @@ export default {
       message: '',
       inReplyTo: {},
       isFocused: false,
+      interactiveComposerOpen: false,
       showEmojiPicker: false,
       attachedFiles: [],
       isRecordingAudio: false,
@@ -209,6 +212,13 @@ export default {
       return this.isFeatureEnabledonAccount(
         this.accountId,
         FEATURE_FLAGS.MACROS
+      );
+    },
+    showInteractiveComposer() {
+      const channel = this.inbox?.channel_type;
+      return (
+        !this.isPrivate &&
+        (channel === 'Channel::Api' || channel === 'Channel::Whatsapp')
       );
     },
     currentContact() {
@@ -1007,6 +1017,15 @@ export default {
       });
       this.hideWhatsappTemplatesModal();
     },
+    onSendInteractive({ content, contentAttributes }) {
+      this.sendMessage({
+        conversationId: this.currentChat.id,
+        message: content,
+        contentAttributes,
+        private: false,
+      });
+      this.interactiveComposerOpen = false;
+    },
     async onSendContentTemplateReply(messagePayload) {
       this.sendMessage({
         conversationId: this.currentChat.id,
@@ -1479,6 +1498,13 @@ export default {
       </div>
     </Transition>
 
+    <InteractiveComposer
+      v-if="showInteractiveComposer && interactiveComposerOpen"
+      :account-id="accountId"
+      @send="onSendInteractive"
+      @close="interactiveComposerOpen = false"
+    />
+
     <Transition
       mode="out-in"
       enter-active-class="transition-all duration-300 ease-out"
@@ -1498,6 +1524,8 @@ export default {
       <ReplyBottomPanel
         v-else
         key="reply-bottom-panel"
+        :show-interactive-button="showInteractiveComposer"
+        :is-interactive-active="interactiveComposerOpen"
         :conversation-id="conversationId"
         :enable-multiple-file-upload="enableMultipleFileUpload"
         :enable-whats-app-templates="showWhatsappTemplates"
@@ -1508,6 +1536,7 @@ export default {
         :is-send-disabled="isReplyButtonDisabled"
         :is-note="isPrivate"
         :is-editor-disabled="isEditorDisabled"
+        @toggle-interactive="interactiveComposerOpen = !interactiveComposerOpen"
         :on-file-upload="onFileUpload"
         :on-send="onSendReply"
         :conversation-type="conversationType"

@@ -123,12 +123,21 @@ export default {
       type: Boolean,
       default: false,
     },
+    showInteractiveButton: {
+      type: Boolean,
+      default: false,
+    },
+    isInteractiveActive: {
+      type: Boolean,
+      default: false,
+    },
   },
   emits: [
     'toggleInsertArticle',
     'selectWhatsappTemplate',
     'selectContentTemplate',
     'requestContactInfoTemplate',
+    'toggleInteractive',
   ],
   setup(props) {
     const { setSignatureFlagForInbox, fetchSignatureFlagFromUISettings } =
@@ -279,6 +288,15 @@ export default {
         faded
         sm
         @click="toggleEmojiPicker"
+      />
+      <NextButton
+        v-if="showInteractiveButton"
+        v-tooltip.top-end="$t('CONVERSATION.REPLYBOX.INTERACTIVE_TOGGLE')"
+        icon="i-ph-lightning"
+        slate
+        :faded="!isInteractiveActive"
+        sm
+        @click="$emit('toggleInteractive')"
       />
       <FileUpload
         v-if="showAttachButton"
