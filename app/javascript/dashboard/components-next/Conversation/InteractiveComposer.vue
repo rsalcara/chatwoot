@@ -1,13 +1,46 @@
 <script setup>
-import { computed, reactive } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import Icon from 'next/icon/Icon.vue';
 import {
-  MAX_BUTTONS,
   MAX_CARDS,
   MAX_LIST_ROWS,
+  MAX_QUICK_REPLIES,
 } from 'next/message/helpers/interactive';
 
+const props = defineProps({
+  accountId: { type: Number, required: true },
+});
+
 const emit = defineEmits(['send', 'close']);
+
+const TEMPLATES_KEY = 'interactiveTemplates';
+
+const templates = ref([]);
+const savingTemplate = ref(false);
+const templateName = ref('');
+
+function templatesStorageKey() {
+  return `${TEMPLATES_KEY}_${props.accountId}`;
+}
+
+function loadTemplates() {
+  try {
+    templates.value = JSON.parse(
+      window.localStorage.getItem(templatesStorageKey()) || '[]'
+    );
+  } catch (error) {
+    templates.value = [];
+  }
+}
+
+function persistTemplates() {
+  window.localStorage.setItem(
+    templatesStorageKey(),
+    JSON.stringify(templates.value)
+  );
+}
+
+loadTemplates();
 
 const TYPES = [
   { value: 'buttons', label: 'Botões', icon: 'i-lucide-message-square-more' },
@@ -17,6 +50,14 @@ const TYPES = [
     label: 'Carrossel',
     icon: 'i-lucide-gallery-horizontal',
   },
+  { value: 'poll', label: 'Enquete', icon: 'i-lucide-bar-chart-3' },
+];
+
+const BUTTON_KINDS = [
+  { value: 'reply', label: 'Resposta' },
+  { value: 'url', label: 'URL' },
+  { value: 'copy', label: 'Copiar' },
+  { value: 'call', label: 'Ligar' },
 ];
 
 const state = reactive({
@@ -24,23 +65,55 @@ const state = reactive({
   body: '',
   footer: '',
   button: 'Ver opções',
-  buttons: [{ title: '' }, { title: '' }],
+  buttons: [
+    { kind: 'reply', title: '', url: '', copyText: '', phoneNumber: '' },
+  ],
   sectionTitle: '',
   rows: [{ title: '', description: '' }],
   cards: [{ mediaUrl: '', body: '', button: '' }],
+  pollName: '',
+  pollOptions: [{ name: '' }],
+  pollSelectableCount: 1,
 });
+
+function saveTemplate() {
+  if (!templateName.value.trim()) return;
+  templates.value.unshift({
+    id: Date.now().toString(36),
+    name: templateName.value.trim(),
+    payload: JSON.parse(JSON.stringify(state)),
+  });
+  persistTemplates();
+  templateName.value = '';
+  savingTemplate.value = false;
+}
+
+function loadTemplate(template) {
+  Object.assign(state, JSON.parse(JSON.stringify(template.payload)));
+}
+
+function deleteTemplate(id) {
+  templates.value = templates.value.filter(template => template.id !== id);
+  persistTemplates();
+}
+
+loadTemplates();
 
 const currentTypeLabel = computed(
   () => TYPES.find(type => type.value === state.type)?.label
 );
 
 const isValid = computed(() => {
+  if (state.type === 'poll') {
+    return (
+      state.pollName.trim() &&
+      state.pollOptions.map(option => option.name.trim()).filter(Boolean)
+        .length >= 2
+    );
+  }
   if (!state.body.trim()) return false;
   if (state.type === 'buttons') {
-    const titles = state.buttons
-      .map(button => button.title.trim())
-      .filter(Boolean);
-    return titles.length > 0;
+    return state.buttons.some(button => button.title.trim());
   }
   if (state.type === 'list') {
     return state.button.trim() && state.rows.some(row => row.title.trim());
@@ -55,8 +128,8 @@ function switchType(type) {
   state.type = type;
 }
 
-function addChip(list, max) {
-  if (list.length < max) list.push({ title: '' });
+function addChip(list, max, factory) {
+  if (list.length < max) list.push(factory());
 }
 
 function removeChip(list, index) {
@@ -75,16 +148,41 @@ function addCard() {
   }
 }
 
+function addPollOption() {
+  if (state.pollOptions.length < MAX_LIST_ROWS) {
+    state.pollOptions.push({ name: '' });
+  }
+}
+
 function buildPayload() {
+  if (state.type === 'poll') {
+    return {
+      type: 'poll',
+      name: state.pollName.trim(),
+      options: state.pollOptions
+        .map(option => option.name.trim())
+        .filter(Boolean),
+      selectableCount: state.pollSelectableCount,
+    };
+  }
+
   const payload = { type: state.type, body: state.body.trim() };
   if (state.footer.trim()) payload.footer = state.footer.trim();
 
   if (state.type === 'buttons') {
     payload.buttons = state.buttons
-      .map((button, index) => ({
-        id: `btn_${index + 1}`,
-        title: button.title.trim(),
-      }))
+      .map((button, index) => {
+        const base = {
+          type: button.kind || 'reply',
+          id: `btn_${index + 1}`,
+          title: button.title.trim(),
+        };
+        if (button.kind === 'url') base.url = button.url.trim();
+        if (button.kind === 'copy') base.copyText = button.copyText.trim();
+        if (button.kind === 'call')
+          base.phoneNumber = button.phoneNumber.trim();
+        return base;
+      })
       .filter(button => button.title);
   }
 
@@ -122,8 +220,9 @@ function buildPayload() {
 function send() {
   if (!isValid.value) return;
   const payload = buildPayload();
+  const content = state.type === 'poll' ? state.pollName.trim() : payload.body;
   emit('send', {
-    content: payload.body,
+    content,
     contentAttributes: { interactive: payload },
   });
 }
@@ -155,6 +254,57 @@ function send() {
       </button>
     </div>
 
+    <!-- biblioteca de modelos -->
+    <div class="mb-3 rounded-lg border border-dashed border-n-weak p-2">
+      <div class="flex flex-wrap items-center gap-1.5">
+        <button
+          type="button"
+          class="flex items-center gap-1 rounded-lg border border-n-weak px-2 py-1 text-xs font-medium text-n-slate-11 hover:bg-n-alpha-1"
+          data-testid="save-template"
+          @click="savingTemplate = !savingTemplate"
+        >
+          <Icon icon="i-lucide-save" class="size-3.5" />
+          {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE.SAVE_TEMPLATE') }}
+        </button>
+        <template v-if="savingTemplate">
+          <input
+            v-model="templateName"
+            :placeholder="
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.TEMPLATE_NAME_PLACEHOLDER')
+            "
+            class="w-40 rounded-lg border border-n-weak bg-n-solid-1 px-2 py-1 text-xs text-n-slate-12 outline-none focus:border-n-teal-11/40"
+            @keyup.enter="saveTemplate"
+          />
+          <button
+            type="button"
+            class="rounded-lg bg-n-teal-11 px-2 py-1 text-xs font-medium text-white"
+            @click="saveTemplate"
+          >
+            {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE.SAVE') }}
+          </button>
+        </template>
+        <button
+          v-for="template in templates"
+          :key="template.id"
+          type="button"
+          class="group flex items-center gap-1 rounded-lg bg-n-alpha-2 px-2 py-1 text-xs font-medium text-n-slate-12 hover:bg-n-alpha-3"
+          :title="$t('CONVERSATION.REPLYBOX.INTERACTIVE.LOAD_TEMPLATE')"
+          @click="loadTemplate(template)"
+        >
+          <Icon icon="i-lucide-bookmark" class="size-3.5 text-n-teal-11" />
+          {{ template.name }}
+          <span
+            role="button"
+            tabindex="0"
+            class="ml-0.5 text-n-slate-10 hover:text-n-red-11"
+            @click.stop="deleteTemplate(template.id)"
+          >
+            <Icon icon="i-lucide-x" class="size-3" />
+          </span>
+        </button>
+      </div>
+    </div>
+
     <div class="mb-3 flex gap-1.5">
       <button
         v-for="type in TYPES"
@@ -175,6 +325,7 @@ function send() {
 
     <div class="flex flex-col gap-2">
       <textarea
+        v-if="state.type !== 'poll'"
         v-model="state.body"
         rows="2"
         :placeholder="
@@ -185,6 +336,7 @@ function send() {
         class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-sm text-n-slate-12 outline-none focus:border-n-teal-11/40"
       />
       <input
+        v-if="state.type !== 'poll'"
         v-model="state.footer"
         :placeholder="
           $t('CONVERSATION.REPLYBOX.INTERACTIVE.FOOTER_PLACEHOLDER')
@@ -197,38 +349,143 @@ function send() {
         <div
           v-for="(button, index) in state.buttons"
           :key="index"
+          class="flex flex-col gap-1.5 rounded-lg border border-n-weak p-2.5"
+        >
+          <div class="flex items-center gap-2">
+            <select
+              v-model="button.kind"
+              class="rounded-lg border border-n-weak bg-n-solid-1 px-2 py-2 text-xs text-n-slate-12 outline-none"
+            >
+              <option
+                v-for="kind in BUTTON_KINDS"
+                :key="kind.value"
+                :value="kind.value"
+              >
+                {{ kind.label }}
+              </option>
+            </select>
+            <input
+              v-model="button.title"
+              :placeholder="
+                $t('CONVERSATION.REPLYBOX.INTERACTIVE.BUTTON_PLACEHOLDER', {
+                  n: index + 1,
+                })
+              "
+              class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-sm text-n-slate-12 outline-none focus:border-n-teal-11/40"
+            />
+            <button
+              v-if="state.buttons.length > 1"
+              type="button"
+              class="rounded-lg p-2 text-n-slate-11 hover:bg-n-alpha-1"
+              @click="removeChip(state.buttons, index)"
+            >
+              <Icon icon="i-lucide-trash-2" class="size-4" />
+            </button>
+          </div>
+          <input
+            v-if="button.kind === 'url'"
+            v-model="button.url"
+            :placeholder="
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.URL_PLACEHOLDER')
+            "
+            class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-xs text-n-slate-12 outline-none focus:border-n-teal-11/40"
+          />
+          <input
+            v-if="button.kind === 'copy'"
+            v-model="button.copyText"
+            :placeholder="
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.COPY_PLACEHOLDER')
+            "
+            class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-xs text-n-slate-12 outline-none focus:border-n-teal-11/40"
+          />
+          <input
+            v-if="button.kind === 'call'"
+            v-model="button.phoneNumber"
+            :placeholder="
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.PHONE_PLACEHOLDER')
+            "
+            class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-xs text-n-slate-12 outline-none focus:border-n-teal-11/40"
+          />
+        </div>
+        <button
+          v-if="state.buttons.length < MAX_QUICK_REPLIES"
+          type="button"
+          class="self-start text-xs font-medium text-n-teal-11 hover:underline"
+          @click="
+            addChip(state.buttons, MAX_QUICK_REPLIES, () => ({
+              kind: 'reply',
+              title: '',
+              url: '',
+              copyText: '',
+              phoneNumber: '',
+            }))
+          "
+        >
+          {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE.ADD_BUTTON') }}
+        </button>
+      </template>
+
+      <!-- poll -->
+      <template v-if="state.type === 'poll'">
+        <input
+          v-model="state.pollName"
+          :placeholder="
+            $t('CONVERSATION.REPLYBOX.INTERACTIVE.POLL_NAME_PLACEHOLDER')
+          "
+          class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-sm text-n-slate-12 outline-none focus:border-n-teal-11/40"
+        />
+        <div
+          v-for="(option, index) in state.pollOptions"
+          :key="index"
           class="flex items-center gap-2"
         >
           <input
-            v-model="button.title"
+            v-model="option.name"
             :placeholder="
-              $t('CONVERSATION.REPLYBOX.INTERACTIVE.BUTTON_PLACEHOLDER', {
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.POLL_OPTION_PLACEHOLDER', {
                 n: index + 1,
               })
             "
             class="w-full rounded-lg border border-n-weak bg-n-solid-1 px-3 py-2 text-sm text-n-slate-12 outline-none focus:border-n-teal-11/40"
           />
           <button
-            v-if="state.buttons.length > 1"
+            v-if="state.pollOptions.length > 2"
             type="button"
             class="rounded-lg p-2 text-n-slate-11 hover:bg-n-alpha-1"
-            @click="removeChip(state.buttons, index)"
+            @click="state.pollOptions.splice(index, 1)"
           >
             <Icon icon="i-lucide-trash-2" class="size-4" />
           </button>
         </div>
-        <button
-          v-if="state.buttons.length < MAX_BUTTONS"
-          type="button"
-          class="self-start text-xs font-medium text-n-teal-11 hover:underline"
-          @click="addChip(state.buttons, MAX_BUTTONS)"
-        >
-          {{
-            $t('CONVERSATION.REPLYBOX.INTERACTIVE.ADD_BUTTON', {
-              n: MAX_BUTTONS,
-            })
-          }}
-        </button>
+        <div class="flex items-center justify-between">
+          <button
+            v-if="state.pollOptions.length < MAX_LIST_ROWS"
+            type="button"
+            class="text-xs font-medium text-n-teal-11 hover:underline"
+            @click="addPollOption"
+          >
+            {{
+              $t('CONVERSATION.REPLYBOX.INTERACTIVE.ADD_ROW', {
+                n: MAX_LIST_ROWS,
+              })
+            }}
+          </button>
+          <label class="flex items-center gap-1.5 text-xs text-n-slate-11">
+            <input
+              v-model.number="state.pollSelectableCount"
+              type="radio"
+              value="1"
+            />
+            {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE.POLL_SINGLE') }}
+            <input
+              v-model.number="state.pollSelectableCount"
+              type="radio"
+              :value="2"
+              class="ml-2"
+            />
+            {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE.POLL_MULTI') }}
+          </label>
+        </div>
       </template>
 
       <!-- list -->

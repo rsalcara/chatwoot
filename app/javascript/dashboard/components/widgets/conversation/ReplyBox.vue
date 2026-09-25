@@ -1498,20 +1498,9 @@ export default {
       </div>
     </Transition>
 
-    <div v-if="showInteractiveComposer" class="flex justify-start px-4 pb-1">
-      <button
-        type="button"
-        class="flex items-center gap-1.5 rounded-lg border border-n-weak px-2.5 py-1.5 text-xs font-medium text-n-slate-11 hover:bg-n-alpha-1"
-        data-testid="toggle-interactive-composer"
-        @click="interactiveComposerOpen = !interactiveComposerOpen"
-      >
-        <span aria-hidden="true">⚡</span>
-        {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE_TOGGLE') }}
-      </button>
-    </div>
-
     <InteractiveComposer
       v-if="showInteractiveComposer && interactiveComposerOpen"
+      :account-id="accountId"
       @send="onSendInteractive"
       @close="interactiveComposerOpen = false"
     />
@@ -1535,6 +1524,8 @@ export default {
       <ReplyBottomPanel
         v-else
         key="reply-bottom-panel"
+        :show-interactive-button="showInteractiveComposer"
+        :is-interactive-active="interactiveComposerOpen"
         :conversation-id="conversationId"
         :enable-multiple-file-upload="enableMultipleFileUpload"
         :enable-whats-app-templates="showWhatsappTemplates"
@@ -1545,6 +1536,7 @@ export default {
         :is-send-disabled="isReplyButtonDisabled"
         :is-note="isPrivate"
         :is-editor-disabled="isEditorDisabled"
+        @toggle-interactive="interactiveComposerOpen = !interactiveComposerOpen"
         :on-file-upload="onFileUpload"
         :on-send="onSendReply"
         :conversation-type="conversationType"

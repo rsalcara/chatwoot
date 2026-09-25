@@ -25,8 +25,9 @@ describe('#getInteractive', () => {
     });
     expect(result.type).toBe('buttons');
     expect(result.body).toBe('Escolhe');
-    expect(result.buttons).toHaveLength(3); // max 3, empty title filtered
-    expect(result.buttons[0]).toEqual({ id: '1', title: 'Sim' });
+    expect(result.buttons).toHaveLength(3);
+    expect(result.buttons[0].id).toBe('1');
+    expect(result.buttons[0].title).toBe('Sim');
   });
 
   it('normalizes a list payload', () => {
@@ -58,6 +59,50 @@ describe('#getInteractive', () => {
     expect(result.type).toBe('carousel');
     expect(result.cards[0].mediaUrl).toBe('https://x/y.png');
     expect(result.cards[0].buttons[0].title).toBe('Comprar');
+  });
+
+  it('normalizes a buttons payload without slicing', () => {
+    const buttons = Array.from({ length: 16 }, (_, i) => ({
+      id: `b${i}`,
+      text: `Opção ${i}`,
+    }));
+    const result = getInteractive({
+      interactive: { type: 'buttons', buttons, body: 'Menu' },
+    });
+    expect(result.buttons).toHaveLength(16);
+    expect(result.buttons[15].title).toBe('Opção 15');
+  });
+
+  it('normalizes CTA button fields', () => {
+    const result = getInteractive({
+      interactive: {
+        type: 'buttons',
+        body: 'PIX',
+        buttons: [
+          { type: 'url', text: 'Ver pedido', url: 'https://x.com' },
+          { type: 'copy', text: 'Copiar PIX', copyText: '00020126' },
+          { type: 'call', text: 'Ligar', phoneNumber: '+5511999999999' },
+        ],
+      },
+    });
+    expect(result.buttons[0].type).toBe('url');
+    expect(result.buttons[0].url).toBe('https://x.com');
+    expect(result.buttons[1].copyText).toBe('00020126');
+    expect(result.buttons[2].phoneNumber).toBe('+5511999999999');
+  });
+
+  it('normalizes a poll payload', () => {
+    const result = getInteractive({
+      interactive: {
+        type: 'poll',
+        name: 'Qual tecnologia?',
+        options: ['JS', 'Python', { name: 'Go' }],
+        selectableCount: 1,
+      },
+    });
+    expect(result.type).toBe('poll');
+    expect(result.name).toBe('Qual tecnologia?');
+    expect(result.options).toHaveLength(3);
   });
 
   it('normalizes received replies', () => {

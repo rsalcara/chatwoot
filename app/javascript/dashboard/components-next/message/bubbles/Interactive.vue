@@ -4,7 +4,11 @@ import BaseBubble from 'next/message/bubbles/Base.vue';
 import FormattedContent from './Text/FormattedContent.vue';
 import Icon from 'next/icon/Icon.vue';
 import { useMessageContext } from '../provider.js';
-import { getInteractive, isInteractiveReply } from '../helpers/interactive';
+import {
+  getInteractive,
+  isInteractiveReply,
+  pollOptions,
+} from '../helpers/interactive';
 
 const { content, contentAttributes, attachments } = useMessageContext();
 
@@ -33,12 +37,23 @@ const footerText = computed(() =>
   isReply.value ? '' : interactive.value?.footer || ''
 );
 
+const isPoll = computed(() => interactive.value?.type === 'poll');
+
+const pollItems = computed(() => pollOptions(interactive.value));
+
+const pollMulti = computed(() => (interactive.value?.selectableCount || 1) > 1);
+
+const pollFooter = computed(() => {
+  const count = interactive.value?.selectableCount || 1;
+  return count > 1 ? `Selecione até ${count} opções` : 'Selecione uma opção';
+});
+
 const chips = computed(() => {
   const payload = interactive.value;
   if (!payload || isReply.value) return [];
   if (payload.type === 'buttons') return payload.buttons;
   if (payload.type === 'list') {
-    return [{ title: payload.button || 'Menu' }];
+    return [{ type: 'reply', title: payload.button || 'Menu' }];
   }
   return [];
 });
@@ -65,6 +80,26 @@ const sections = computed(() => {
   if (!payload || payload.type !== 'list') return [];
   return payload.sections;
 });
+
+const chipIcon = type => {
+  if (type === 'url') return 'i-lucide-external-link';
+  if (type === 'copy') return 'i-lucide-copy';
+  if (type === 'call') return 'i-lucide-phone';
+  return 'i-lucide-chevron-right';
+};
+
+function chipHref(button) {
+  if (button.type === 'url') return button.url || '#';
+  if (button.type === 'call')
+    return button.phoneNumber ? `tel:${button.phoneNumber}` : '#';
+  return null;
+}
+
+function copyChipText(button) {
+  if (button.copyText && navigator.clipboard) {
+    navigator.clipboard.writeText(button.copyText);
+  }
+}
 </script>
 
 <template>
@@ -89,6 +124,25 @@ const sections = computed(() => {
         :content="bodyText"
         class="text-sm text-n-slate-12"
       />
+
+      <!-- poll -->
+      <div
+        v-if="isPoll"
+        class="flex flex-col gap-2 rounded-lg border border-n-weak px-3 py-2"
+        data-testid="interactive-poll"
+      >
+        <span
+          v-for="option in pollItems"
+          :key="option.name"
+          class="flex items-center gap-2 text-sm text-n-slate-12"
+        >
+          <span
+            class="inline-flex size-4 items-center justify-center rounded-full border border-n-strong/40"
+            :class="{ 'rounded-md': pollMulti }"
+          />
+          {{ option.name }}
+        </span>
+      </div>
 
       <!-- list sections preview -->
       <div
@@ -145,7 +199,7 @@ const sections = computed(() => {
               :key="button.id"
               class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
             >
-              <Icon icon="i-lucide-chevron-right" class="size-3.5" />
+              <Icon :icon="chipIcon(button.type)" class="size-3.5" />
               {{ button.title }}
             </span>
           </div>
@@ -156,6 +210,9 @@ const sections = computed(() => {
       <span v-if="footerText" class="text-xs text-n-slate-10">
         {{ footerText }}
       </span>
+      <span v-if="isPoll" class="text-xs text-n-slate-10">
+        {{ pollFooter }}
+      </span>
 
       <!-- action chips (buttons / list menu) -->
       <div
@@ -163,21 +220,49 @@ const sections = computed(() => {
         class="flex flex-col gap-2"
         data-testid="interactive-chips"
       >
-        <span
-          v-for="chip in chips"
-          :key="chip.id || chip.title"
-          class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
-        >
-          <Icon
-            :icon="
-              interactive.type === 'list'
-                ? 'i-lucide-list'
-                : 'i-lucide-chevron-right'
-            "
-            class="size-3.5"
-          />
-          {{ chip.title }}
-        </span>
+        <template v-for="chip in chips" :key="chip.id || chip.title">
+          <a
+            v-if="chip.type === 'url' && chip.url"
+            :href="chipHref(chip)"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
+          >
+            <Icon :icon="chipIcon('url')" class="size-3.5" />
+            {{ chip.title }}
+          </a>
+          <button
+            v-else-if="chip.type === 'copy'"
+            type="button"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
+            @click="copyChipText(chip)"
+          >
+            <Icon :icon="chipIcon('copy')" class="size-3.5" />
+            {{ chip.title }}
+          </button>
+          <a
+            v-else-if="chip.type === 'call'"
+            :href="chipHref(chip)"
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
+          >
+            <Icon :icon="chipIcon('call')" class="size-3.5" />
+            {{ chip.title }}
+          </a>
+          <span
+            v-else
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-n-weak py-2 text-center text-sm font-medium text-n-teal-11"
+          >
+            <Icon
+              :icon="
+                interactive.type === 'list'
+                  ? 'i-lucide-list'
+                  : 'i-lucide-chevron-right'
+              "
+              class="size-3.5"
+            />
+            {{ chip.title }}
+          </span>
+        </template>
       </div>
     </div>
   </BaseBubble>
