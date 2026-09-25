@@ -26,6 +26,7 @@ import Avatar from 'next/avatar/Avatar.vue';
 
 import TextBubble from './bubbles/Text/Index.vue';
 import ActivityBubble from './bubbles/Activity.vue';
+import InteractiveBubble from './bubbles/Interactive.vue';
 import ImageBubble from './bubbles/Image.vue';
 import FileBubble from './bubbles/File.vue';
 import AudioBubble from './bubbles/Audio.vue';
@@ -322,6 +323,10 @@ const componentToRender = computed(() => {
     return WhatsappFlowResponseBubble;
   }
 
+  if (props.contentAttributes?.interactive?.type) {
+    return InteractiveBubble;
+  }
+
   if (props.contentType === CONTENT_TYPES.INPUT_CSAT) {
     return CSATBubble;
   }
@@ -453,6 +458,7 @@ const shouldRenderMessage = computed(() => {
     isUnsupported ||
     isAnIntegrationMessage ||
     hasWhatsappFlowResponse ||
+    !!props.contentAttributes?.interactive?.type ||
     shouldShowWhatsappReferral.value ||
     isFailedMessage ||
     hasExternalError

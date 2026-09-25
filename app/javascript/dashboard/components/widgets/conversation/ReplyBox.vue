@@ -17,6 +17,7 @@ import CopilotEditorSection from './CopilotEditorSection.vue';
 import MessageSignatureMissingAlert from './MessageSignatureMissingAlert.vue';
 import ReplyBoxBanner from './ReplyBoxBanner.vue';
 import QuotedEmailPreview from './QuotedEmailPreview.vue';
+import InteractiveComposer from 'dashboard/components-next/Conversation/InteractiveComposer.vue';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 import WootMessageEditor from 'dashboard/components/widgets/WootWriter/Editor.vue';
 import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
@@ -84,6 +85,7 @@ export default {
     CopilotEditorSection,
     CopilotReplyBottomPanel,
     ConversationResolveAttributesModal,
+    InteractiveComposer,
   },
   mixins: [inboxMixin, fileUploadMixin],
   emits: ['toggleEditorSize'],
@@ -165,6 +167,7 @@ export default {
       message: '',
       inReplyTo: {},
       isFocused: false,
+      interactiveComposerOpen: false,
       showEmojiPicker: false,
       attachedFiles: [],
       isRecordingAudio: false,
@@ -209,6 +212,13 @@ export default {
       return this.isFeatureEnabledonAccount(
         this.accountId,
         FEATURE_FLAGS.MACROS
+      );
+    },
+    showInteractiveComposer() {
+      const channel = this.inbox?.channel_type;
+      return (
+        !this.isPrivate &&
+        (channel === 'Channel::Api' || channel === 'Channel::Whatsapp')
       );
     },
     currentContact() {
@@ -1007,6 +1017,15 @@ export default {
       });
       this.hideWhatsappTemplatesModal();
     },
+    onSendInteractive({ content, contentAttributes }) {
+      this.sendMessage({
+        conversationId: this.currentChat.id,
+        message: content,
+        contentAttributes,
+        private: false,
+      });
+      this.interactiveComposerOpen = false;
+    },
     async onSendContentTemplateReply(messagePayload) {
       this.sendMessage({
         conversationId: this.currentChat.id,
@@ -1478,6 +1497,24 @@ export default {
         />
       </div>
     </Transition>
+
+    <div v-if="showInteractiveComposer" class="flex justify-start px-4 pb-1">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-lg border border-n-weak px-2.5 py-1.5 text-xs font-medium text-n-slate-11 hover:bg-n-alpha-1"
+        data-testid="toggle-interactive-composer"
+        @click="interactiveComposerOpen = !interactiveComposerOpen"
+      >
+        <span aria-hidden="true">⚡</span>
+        {{ $t('CONVERSATION.REPLYBOX.INTERACTIVE_TOGGLE') }}
+      </button>
+    </div>
+
+    <InteractiveComposer
+      v-if="showInteractiveComposer && interactiveComposerOpen"
+      @send="onSendInteractive"
+      @close="interactiveComposerOpen = false"
+    />
 
     <Transition
       mode="out-in"
