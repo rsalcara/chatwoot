@@ -65,10 +65,7 @@ jobs:
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}"
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}-ce"
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
-            if [ "${{ github.ref_name }}" = "master" ]; then
-              echo "${REGISTRY}/${IMAGE_NAME}:latest"
-              echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
-            fi
+            echo "${REGISTRY}/${IMAGE_NAME}:latest"
             if [ -n "$VERSION_INPUT" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}"
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
@@ -137,10 +134,7 @@ jobs:
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}"
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}-ce"
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
-            if [ "${{ github.ref_name }}" = "master" ]; then
-              echo "${REGISTRY}/${IMAGE_NAME}:latest"
-              echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
-            fi
+            echo "${REGISTRY}/${IMAGE_NAME}:latest"
             if [ -n "$VERSION_INPUT" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}"
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
