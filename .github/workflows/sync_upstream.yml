@@ -23,6 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.merge.outputs.changed }}
+      version: ${{ steps.merge.outputs.version }}
     steps:
       - name: Checkout develop (histórico completo)
         uses: actions/checkout@v4
@@ -42,17 +43,17 @@ jobs:
         run: |
           git remote add upstream https://github.com/chatwoot/chatwoot.git
           git fetch upstream develop
+          git fetch upstream 'refs/tags/v*:refs/tags/v*'
 
           BEFORE=$(git rev-parse HEAD)
           if git merge --no-edit upstream/develop; then
             AFTER=$(git rev-parse HEAD)
-            if [ "$BEFORE" = "$AFTER" ]; then
-              echo "changed=false" >> "$GITHUB_OUTPUT"
-              echo "Upstream sem novidades — nada a fazer."
-            else
+            if [ "$BEFORE" != "$AFTER" ]; then
               echo "changed=true" >> "$GITHUB_OUTPUT"
               git push origin develop
               echo "Pushed: $AFTER"
+            else
+              echo "Upstream sem novidades no develop."
             fi
           else
             git merge --abort || true
@@ -63,10 +64,26 @@ jobs:
             exit 1
           fi
 
+          # Versões: replica a tag de release mais recente do upstream sobre o
+          # develop JÁ MESCLADO do fork (a tag original aponta para o commit
+          # sem a feature). Só publica a versão que ainda não existe no fork.
+          LATEST=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -n "$LATEST" ] && [ -z "$(git ls-remote --tags origin "refs/tags/$LATEST")" ]; then
+            git tag -f "$LATEST" HEAD
+            git push -f origin "refs/tags/$LATEST"
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+            echo "Nova versão upstream: $LATEST (tag criada sobre o develop do fork)"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
+          fi
+
   publish:
     needs: sync
-    if: needs.sync.outputs.changed == 'true'
+    if: needs.sync.outputs.changed == 'true' || needs.sync.outputs.version != ''
     uses: ./.github/workflows/publish_ghcr.yml
+    with:
+      version: ${{ needs.sync.outputs.version }}
     permissions:
       contents: read
       packages: write

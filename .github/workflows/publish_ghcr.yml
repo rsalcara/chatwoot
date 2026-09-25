@@ -8,8 +8,15 @@ on:
     branches:
       - develop
       - master
+    tags:
+      - 'v*'
   workflow_dispatch:
   workflow_call:
+    inputs:
+      version:
+        description: 'Versão upstream (ex.: v4.19.0) para tag adicional da imagem'
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -30,6 +37,8 @@ jobs:
           - platform: linux/arm64
             runner: ubuntu-22.04-arm
     runs-on: ${{ matrix.runner }}
+    env:
+      VERSION_INPUT: ${{ inputs.version || '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,6 +66,9 @@ jobs:
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
             if [ "${{ github.ref_name }}" = "master" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
+            fi
+            if [ -n "$VERSION_INPUT" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
             fi
             echo "EOF"
           } >> "$GITHUB_ENV"
@@ -102,6 +114,8 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build
+    env:
+      VERSION_INPUT: ${{ inputs.version || '' }}
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
@@ -119,6 +133,9 @@ jobs:
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
             if [ "${{ github.ref_name }}" = "master" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
+            fi
+            if [ -n "$VERSION_INPUT" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
             fi
             echo "EOF"
           } >> "$GITHUB_ENV"
