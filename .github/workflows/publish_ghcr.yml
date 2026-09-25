@@ -62,12 +62,15 @@ jobs:
           SANITIZED_REF=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
           {
             echo "IMAGE_TAGS<<EOF"
+            echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}"
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}-ce"
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
             if [ "${{ github.ref_name }}" = "master" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:latest"
               echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
             fi
             if [ -n "$VERSION_INPUT" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}"
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
             fi
             echo "EOF"
@@ -131,12 +134,15 @@ jobs:
           SANITIZED_REF=$(echo "${{ github.ref_name }}" | sed 's/\//-/g')
           {
             echo "IMAGE_TAGS<<EOF"
+            echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}"
             echo "${REGISTRY}/${IMAGE_NAME}:${SANITIZED_REF}-ce"
             echo "${REGISTRY}/${IMAGE_NAME}:sha-${GITHUB_SHA::7}"
             if [ "${{ github.ref_name }}" = "master" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:latest"
               echo "${REGISTRY}/${IMAGE_NAME}:latest-ce"
             fi
             if [ -n "$VERSION_INPUT" ]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}"
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION_INPUT}-ce"
             fi
             echo "EOF"
