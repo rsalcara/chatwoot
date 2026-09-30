@@ -11,10 +11,12 @@ import { useMessageContext } from '../provider.js';
 import { downloadFile } from '@chatwoot/utils';
 
 import GalleryView from 'dashboard/components/widgets/conversation/components/GalleryView.vue';
+import FormattedContent from './Text/FormattedContent.vue';
 
 const { t } = useI18n();
 
-const { filteredCurrentChatAttachments, attachments } = useMessageContext();
+const { filteredCurrentChatAttachments, attachments, content } =
+  useMessageContext();
 
 const attachment = computed(() => {
   return attachments.value[0];
@@ -50,7 +52,7 @@ const handleImageError = () => {
 
 <template>
   <BaseBubble
-    class="overflow-hidden p-3"
+    class="overflow-hidden p-3 !bg-n-solid-1"
     data-bubble-name="image"
     @click="showGallery = true"
   >
@@ -60,9 +62,12 @@ const handleImageError = () => {
         {{ $t('COMPONENTS.MEDIA.IMAGE_UNAVAILABLE') }}
       </p>
     </div>
-    <div v-else-if="isLoaded" class="relative group rounded-lg overflow-hidden">
+    <div
+      v-else-if="isLoaded"
+      class="relative group -mx-3 -mt-3 overflow-hidden"
+    >
       <img
-        class="skip-context-menu"
+        class="skip-context-menu block w-full"
         :src="attachment.dataUrl"
         :width="attachment.width"
         :height="attachment.height"
@@ -83,6 +88,9 @@ const handleImageError = () => {
           @click.stop="downloadAttachment"
         />
       </div>
+    </div>
+    <div v-if="content" class="pt-2 text-sm text-n-slate-12">
+      <FormattedContent :content="content" />
     </div>
   </BaseBubble>
   <GalleryView

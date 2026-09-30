@@ -1,0 +1,82 @@
+name: Sync with upstream (chatwoot/chatwoot)
+
+on:
+  schedule:
+    - cron: '17 9 * * *' # 06:17 Brasília (UTC-3)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.merge.outputs.changed }}
+      version: ${{ steps.merge.outputs.version }}
+    steps:
+      - name: Checkout develop (histórico completo)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          fetch-depth: 0
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Merge upstream/develop
+        id: merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git remote add upstream https://github.com/chatwoot/chatwoot.git
+          git fetch upstream develop
+          git fetch upstream 'refs/tags/v*:refs/tags/v*'
+
+          BEFORE=$(git rev-parse HEAD)
+          if git merge --no-edit upstream/develop; then
+            AFTER=$(git rev-parse HEAD)
+            if [ "$BEFORE" != "$AFTER" ]; then
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              git push origin develop
+              echo "Pushed: $AFTER"
+            else
+              echo "Upstream sem novidades no develop."
+            fi
+          else
+            git merge --abort || true
+            gh issue create \
+              --title "Sync upstream falhou: conflito no merge" \
+              --body "O merge automático de \`chatwoot/chatwoot@develop\` conflitou com as customizações. Resolva manualmente (fetch upstream + merge develop) e reexecute a sync. Última execução: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+              || echo "Não foi possível abrir a issue (ver permissões)."
+            exit 1
+          fi
+
+          # Replica a tag de release mais recente do upstream sobre a develop
+          # já mesclada. Só publica a versão que ainda não existe no fork.
+          LATEST=$(git tag --list 'v*' --sort=-v:refname | head -1)
+          if [ -n "$LATEST" ] && [ -z "$(git ls-remote --tags origin "refs/tags/$LATEST")" ]; then
+            git tag -f "$LATEST" HEAD
+            git push -f origin "refs/tags/$LATEST"
+            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+            echo "Nova versão upstream: $LATEST"
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
+          fi
+
+  build:
+    needs: sync
+    if: needs.sync.outputs.changed == 'true' || needs.sync.outputs.version != ''
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+      packages: write

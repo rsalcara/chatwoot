@@ -26,6 +26,7 @@ import Avatar from 'next/avatar/Avatar.vue';
 
 import TextBubble from './bubbles/Text/Index.vue';
 import ActivityBubble from './bubbles/Activity.vue';
+import InteractiveBubble from './bubbles/Interactive.vue';
 import ImageBubble from './bubbles/Image.vue';
 import FileBubble from './bubbles/File.vue';
 import AudioBubble from './bubbles/Audio.vue';
@@ -47,8 +48,15 @@ import WhatsappReferral from './bubbles/Text/WhatsappReferral.vue';
 import MessageError from './MessageError.vue';
 import ForwardEmailPanel from './forward/ForwardEmailPanel.vue';
 import ForwardedEmailBanner from './forward/ForwardedEmailBanner.vue';
+import GroupSenderLabel from './GroupSenderLabel.vue';
 import ContextMenu from 'dashboard/modules/conversations/components/MessageContextMenu.vue';
 import { useBranding } from 'shared/composables/useBranding';
+import {
+  getGroupSenderName,
+  getGroupSenderAvatarUrl,
+  getGroupChatAvatarUrl,
+} from './helpers/groupSender';
+import { getInteractive } from './helpers/interactive';
 
 /**
  * @typedef {Object} Attachment
@@ -236,6 +244,15 @@ const isBotOrAgentMessage = computed(() => {
 });
 
 /**
+ * Name of the individual participant who authored this message inside a
+ * group conversation (published by bridges via content_attributes).
+ */
+const groupSenderName = computed(() => getGroupSenderName(props));
+const groupSenderAvatarUrl = computed(
+  () => getGroupSenderAvatarUrl(props) || getGroupChatAvatarUrl(props)
+);
+
+/**
  * Computes the message orientation based on sender type and message type
  * @returns {import('vue').ComputedRef<'left'|'right'|'center'>} The computed orientation
  */
@@ -261,7 +278,9 @@ const flexOrientationClass = computed(() => {
 
 const gridClass = computed(() => {
   const map = {
-    [ORIENTATION.LEFT]: 'grid grid-cols-1fr',
+    [ORIENTATION.LEFT]: groupSenderName.value
+      ? 'grid grid-cols-[24px_1fr]'
+      : 'grid grid-cols-1fr',
     [ORIENTATION.RIGHT]: 'grid grid-cols-[1fr_24px]',
   };
 
@@ -270,7 +289,12 @@ const gridClass = computed(() => {
 
 const gridTemplate = computed(() => {
   const map = {
-    [ORIENTATION.LEFT]: `
+    [ORIENTATION.LEFT]: groupSenderName.value
+      ? `
+      "avatar bubble"
+      "spacer meta"
+    `
+      : `
       "bubble"
       "meta"
     `,
@@ -291,9 +315,10 @@ const shouldGroupWithNext = computed(() => {
 
 const shouldShowAvatar = computed(() => {
   if (props.messageType === MESSAGE_TYPES.ACTIVITY) return false;
-  if (orientation.value === ORIENTATION.LEFT) return false;
+  if (orientation.value === ORIENTATION.LEFT && groupSenderName.value)
+    return true;
 
-  return true;
+  return orientation.value !== ORIENTATION.LEFT;
 });
 
 const componentToRender = computed(() => {
@@ -304,6 +329,10 @@ const componentToRender = computed(() => {
 
   if (props.contentAttributes?.whatsappFlowResponse) {
     return WhatsappFlowResponseBubble;
+  }
+
+  if (getInteractive(props.contentAttributes)) {
+    return InteractiveBubble;
   }
 
   if (props.contentType === CONTENT_TYPES.INPUT_CSAT) {
@@ -347,12 +376,15 @@ const componentToRender = computed(() => {
 
     if (fileType === ATTACHMENT_TYPES.FALLBACK) return FallbackBubble;
 
+    // Media-first bubbles: image and video render large with the caption
+    // inside the same bubble, like the WhatsApp app does.
+    if (fileType === ATTACHMENT_TYPES.IMAGE) return ImageBubble;
+    if (fileType === ATTACHMENT_TYPES.VIDEO) return VideoBubble;
+    if (fileType === ATTACHMENT_TYPES.IG_REEL) return VideoBubble;
+
     if (!props.content) {
-      if (fileType === ATTACHMENT_TYPES.IMAGE) return ImageBubble;
       if (fileType === ATTACHMENT_TYPES.FILE) return FileBubble;
       if (fileType === ATTACHMENT_TYPES.AUDIO) return AudioBubble;
-      if (fileType === ATTACHMENT_TYPES.VIDEO) return VideoBubble;
-      if (fileType === ATTACHMENT_TYPES.IG_REEL) return VideoBubble;
       if (fileType === ATTACHMENT_TYPES.EMBED) return EmbedBubble;
       if (fileType === ATTACHMENT_TYPES.LOCATION) return LocationBubble;
     }
@@ -446,6 +478,7 @@ const shouldRenderMessage = computed(() => {
     isUnsupported ||
     isAnIntegrationMessage ||
     hasWhatsappFlowResponse ||
+    !!getInteractive(props.contentAttributes) ||
     shouldShowWhatsappReferral.value ||
     isFailedMessage ||
     hasExternalError
@@ -490,6 +523,13 @@ function handleReplyTo() {
 }
 
 const avatarInfo = computed(() => {
+  if (orientation.value === ORIENTATION.LEFT && groupSenderName.value) {
+    return {
+      name: groupSenderName.value,
+      src: groupSenderAvatarUrl.value,
+    };
+  }
+
   if (props.contentAttributes?.externalEcho) {
     const { name, avatar_url, channel_type, medium, voice_enabled } =
       inbox.value;
@@ -608,9 +648,16 @@ provideMessageContext({
           'ltr:mr-8 rtl:ml-8': orientation === ORIENTATION.LEFT,
           'flex-col items-start gap-2':
             shouldShowWhatsappReferral || isForwardedEmail,
+          'flex-col items-start gap-1':
+            groupSenderName && !shouldShowWhatsappReferral && !isForwardedEmail,
         }"
         @contextmenu="openContextMenu($event)"
       >
+        <GroupSenderLabel
+          v-if="groupSenderName"
+          :name="groupSenderName"
+          :avatar-url="groupSenderAvatarUrl"
+        />
         <WhatsappReferral
           v-if="shouldShowWhatsappReferral"
           :referral="contentAttributes.referral"

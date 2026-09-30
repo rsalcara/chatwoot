@@ -267,6 +267,24 @@ export function removeSignature(body, signature, channelType) {
 }
 
 /**
+ * Removes a trailing `--` signature block from the body regardless of the
+ * current signature text. Used to clean drafts left behind after the agent
+ * deleted their saved signature (removeSignature needs the old text to match).
+ *
+ * @param {string} body - The body to clean.
+ * @returns {string} The body without the trailing signature block.
+ */
+export function stripTrailingSignatureBlock(body) {
+  if (!body) return body;
+
+  const trimmed = body.replace(/\s+$/, '');
+  const delimiterIndex = trimmed.lastIndexOf(`\n\n${SIGNATURE_DELIMITER}\n\n`);
+  if (delimiterIndex === -1) return body;
+
+  return trimmed.slice(0, delimiterIndex);
+}
+
+/**
  * Replaces the old signature with the new signature.
  * If the old signature is not present, it will append the new signature.
  *

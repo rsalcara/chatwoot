@@ -5,6 +5,8 @@ class Whatsapp::Providers::Whatsapp360DialogService < Whatsapp::Providers::BaseS
       send_attachment_message(phone_number, message)
     elsif message.content_type == 'input_select'
       send_interactive_text_message(phone_number, message)
+    elsif (payload = create_interactive_payload(message)).present?
+      send_interactive_message(phone_number, message, payload)
     else
       send_text_message(phone_number, message)
     end
@@ -113,6 +115,20 @@ class Whatsapp::Providers::Whatsapp360DialogService < Whatsapp::Providers::BaseS
   def send_interactive_text_message(phone_number, message)
     payload = create_payload_based_on_items(message)
 
+    response = HTTParty.post(
+      "#{api_base_path}/messages",
+      headers: api_headers,
+      body: {
+        to: phone_number,
+        interactive: payload,
+        type: 'interactive'
+      }.to_json
+    )
+
+    process_response(response, message)
+  end
+
+  def send_interactive_message(phone_number, message, payload)
     response = HTTParty.post(
       "#{api_base_path}/messages",
       headers: api_headers,

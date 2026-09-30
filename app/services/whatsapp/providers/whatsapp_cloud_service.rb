@@ -1,3 +1,4 @@
+# rubocop:disable Metrics/ClassLength -- at the configured limit before the interactive payload support
 class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseService
   def send_message(phone_number, message)
     @message = message
@@ -6,6 +7,8 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
       send_attachment_message(phone_number, message)
     elsif message.content_type == 'input_select'
       send_interactive_text_message(phone_number, message)
+    elsif (payload = create_interactive_payload(message)).present?
+      send_interactive_message(phone_number, message, payload)
     else
       send_text_message(phone_number, message)
     end
@@ -256,6 +259,22 @@ class Whatsapp::Providers::WhatsappCloudService < Whatsapp::Providers::BaseServi
 
     process_response(response, message)
   end
+
+  def send_interactive_message(phone_number, message, payload)
+    response = HTTParty.post(
+      "#{phone_id_path}/messages",
+      headers: api_headers,
+      body: {
+        messaging_product: 'whatsapp',
+        **recipient_params(phone_number),
+        interactive: payload,
+        type: 'interactive'
+      }.to_json
+    )
+
+    process_response(response, message)
+  end
 end
+# rubocop:enable Metrics/ClassLength
 
 Whatsapp::Providers::WhatsappCloudService.prepend_mod_with('Whatsapp::Providers::WhatsappCloudService')

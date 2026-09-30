@@ -1,0 +1,32 @@
+{
+  "message_type": "outgoing",
+  "content": "🛍️ Ofertas especiais - produtos",
+  "private": false,
+  "content_attributes": {
+    "interactive": {
+      "type": "carousel",
+      "body": "🛍️ Ofertas especiais - produtos",
+      "footer": "Loja virtual - entrega em todo o Brasil",
+      "cards": [
+        {
+          "mediaUrl": "https://picsum.photos/seed/fibra/400/300",
+          "title": "📱 iPhone 15 Pro Max",
+          "body": "256GB - Titânio natural - R$ 9.999,00",
+          "footer": "Frete grátis",
+          "buttons": [
+            { "type": "reply", "id": "card_1_b1", "title": "🛒 Comprar" },
+            { "type": "url", "id": "card_1_b3", "title": "🌐 Ver produto", "url": "https://infinite.api.br" }
+          ]
+        },
+        {
+          "mediaUrl": "https://picsum.photos/seed/wifi/400/300",
+          "title": "💻 MacBook Air M3",
+          "body": "8GB RAM - 256GB SSD",
+          "buttons": [
+            { "type": "reply", "id": "card_2_b1", "title": "🛒 Comprar" }
+          ]
+        }
+      ]
+    }
+  }
+}

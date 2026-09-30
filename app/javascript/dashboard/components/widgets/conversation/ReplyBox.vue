@@ -17,6 +17,7 @@ import CopilotEditorSection from './CopilotEditorSection.vue';
 import MessageSignatureMissingAlert from './MessageSignatureMissingAlert.vue';
 import ReplyBoxBanner from './ReplyBoxBanner.vue';
 import QuotedEmailPreview from './QuotedEmailPreview.vue';
+import InteractiveComposer from 'dashboard/components-next/Conversation/InteractiveComposer.vue';
 import { REPLY_EDITOR_MODES } from 'dashboard/components/widgets/WootWriter/constants';
 import WootMessageEditor from 'dashboard/components/widgets/WootWriter/Editor.vue';
 import AudioRecorder from 'dashboard/components/widgets/WootWriter/AudioRecorder.vue';
@@ -43,6 +44,7 @@ import fileUploadMixin from 'dashboard/mixins/fileUploadMixin';
 import {
   appendSignature,
   removeSignature,
+  stripTrailingSignatureBlock,
   getEffectiveChannelType,
   getReplyVariables,
 } from 'dashboard/helper/editorHelper';
@@ -81,6 +83,7 @@ export default {
     CopilotEditorSection,
     CopilotReplyBottomPanel,
     ConversationResolveAttributesModal,
+    InteractiveComposer,
   },
   mixins: [inboxMixin, fileUploadMixin],
   emits: ['toggleEditorSize'],
@@ -162,6 +165,8 @@ export default {
       message: '',
       inReplyTo: {},
       isFocused: false,
+      interactiveComposerOpen: false,
+      interactiveTemplateToLoad: null,
       showEmojiPicker: false,
       attachedFiles: [],
       isRecordingAudio: false,
@@ -206,6 +211,14 @@ export default {
       return this.isFeatureEnabledonAccount(
         this.accountId,
         FEATURE_FLAGS.MACROS
+      );
+    },
+    showInteractiveComposer() {
+      const channel = this.inbox?.channel_type;
+      return (
+        !this.isPrivate &&
+        !this.isEditorDisabled &&
+        (channel === 'Channel::Api' || channel === 'Channel::Whatsapp')
       );
     },
     currentContact() {
@@ -591,6 +604,11 @@ export default {
   },
 
   mounted() {
+    emitter.on(
+      BUS_EVENTS.INTERACTIVE_SIMULATE_TAP,
+      this.onSimulateInteractiveTap
+    );
+
     if (this.isInstagramReplyRestricted) {
       this.replyType = REPLY_EDITOR_MODES.NOTE;
     }
@@ -634,6 +652,10 @@ export default {
       this.onNewConversationModalActive
     );
     emitter.off(CMD_AI_ASSIST, this.executeCopilotAction);
+    emitter.off(
+      BUS_EVENTS.INTERACTIVE_SIMULATE_TAP,
+      this.onSimulateInteractiveTap
+    );
   },
   methods: {
     openContactInfoTemplateModal() {
@@ -758,9 +780,18 @@ export default {
         this.inbox?.medium || ''
       );
 
-      return this.sendWithSignature
-        ? appendSignature(message, this.messageSignature, effectiveChannelType)
-        : removeSignature(message, this.messageSignature, effectiveChannelType);
+      if (this.sendWithSignature && this.messageSignature) {
+        return appendSignature(
+          message,
+          this.messageSignature,
+          effectiveChannelType
+        );
+      }
+      // Signature off or deleted: also strip stale `--` blocks left in
+      // drafts from before the signature was removed.
+      return stripTrailingSignatureBlock(
+        removeSignature(message, this.messageSignature, effectiveChannelType)
+      );
     },
     removeFromDraft() {
       if (this.conversationIdByRoute) {
@@ -945,6 +976,15 @@ export default {
           });
     },
     async onSendReply() {
+      const slashTemplate = this.matchInteractiveSlashCommand();
+      if (slashTemplate) {
+        this.interactiveTemplateToLoad = JSON.parse(
+          JSON.stringify(slashTemplate)
+        );
+        this.interactiveComposerOpen = true;
+        this.message = '';
+        return;
+      }
       const undefinedVariables = getUndefinedVariablesInMessage({
         message: this.message,
         variables: this.messageVariables,
@@ -997,6 +1037,92 @@ export default {
         ...messagePayload,
       });
       this.hideWhatsappTemplatesModal();
+    },
+    async onSendInteractive({ content, contentAttributes, file }) {
+      // showInteractiveComposer already embeds the reply-eligibility state
+      // (channel, private and editor disabled); isReplyButtonDisabled would
+      // also block on an empty editor, which is the normal case here.
+      if (!this.showInteractiveComposer) return;
+      if (file) {
+        // Local media goes out as a native attachment (multipart), which
+        // renders permanently and is delivered to the motor via the webhook.
+        try {
+          const formData = new FormData();
+          formData.append('message_type', 'outgoing');
+          formData.append('content', content || '');
+          formData.append('attachments[]', file);
+          /* global axios */
+          await axios.post(
+            `/api/v1/accounts/${this.accountId}/conversations/${this.currentChat.id}/messages`,
+            formData
+          );
+          emitter.emit(BUS_EVENTS.MESSAGE_SENT);
+        } catch (error) {
+          useAlert(
+            error?.response?.data?.error ||
+              this.$t('CONVERSATION.MESSAGE_ERROR')
+          );
+        }
+        this.interactiveComposerOpen = false;
+        return;
+      }
+      this.sendMessage({
+        conversationId: this.currentChat.id,
+        message: content,
+        contentAttributes,
+        private: false,
+      });
+      this.interactiveComposerOpen = false;
+    },
+    onInteractiveShowChange(value) {
+      this.interactiveComposerOpen = value;
+      if (!value) this.interactiveTemplateToLoad = null;
+    },
+    async onSimulateInteractiveTap({ conversationId, reply }) {
+      if (Number(conversationId) !== Number(this.currentChat.id)) return;
+      const interactive = {
+        type: reply.type || 'button_reply',
+        title: reply.title,
+        id: reply.id || '',
+      };
+      if (reply.type === 'list_reply' && reply.description) {
+        interactive.description = reply.description;
+      }
+      try {
+        await axios.post(
+          `/api/v1/accounts/${this.accountId}/conversations/${conversationId}/messages`,
+          {
+            message_type: 'incoming',
+            content: reply.title,
+            content_attributes: { interactive },
+          }
+        );
+        useAlert(this.$t('CONVERSATION.REPLYBOX.INTERACTIVE.SIMULATED_TAP'));
+      } catch (error) {
+        useAlert(
+          error?.response?.data?.error || this.$t('CONVERSATION.MESSAGE_ERROR')
+        );
+      }
+    },
+    matchInteractiveSlashCommand() {
+      if (!this.showInteractiveComposer) return null;
+      const match = (this.message || '').trim().match(/^\/(.+)$/);
+      if (!match) return null;
+      try {
+        const templates = JSON.parse(
+          window.localStorage.getItem(
+            `interactiveTemplates_${this.accountId}`
+          ) || '[]'
+        );
+        const name = match[1].trim().toLowerCase();
+        return (
+          templates.find(
+            template => (template.name || '').trim().toLowerCase() === name
+          ) || null
+        );
+      } catch (error) {
+        return null;
+      }
     },
     async onSendContentTemplateReply(messagePayload) {
       this.sendMessage({
@@ -1470,6 +1596,17 @@ export default {
       </div>
     </Transition>
 
+    <InteractiveComposer
+      v-if="showInteractiveComposer"
+      :key="currentChat.id"
+      :show="interactiveComposerOpen"
+      :account-id="accountId"
+      :template-to-load="interactiveTemplateToLoad"
+      @send="onSendInteractive"
+      @update:show="onInteractiveShowChange"
+      @close="interactiveComposerOpen = false"
+    />
+
     <Transition
       mode="out-in"
       enter-active-class="transition-all duration-300 ease-out"
@@ -1489,6 +1626,8 @@ export default {
       <ReplyBottomPanel
         v-else
         key="reply-bottom-panel"
+        :show-interactive-button="showInteractiveComposer"
+        :is-interactive-active="interactiveComposerOpen"
         :conversation-id="conversationId"
         :enable-multiple-file-upload="enableMultipleFileUpload"
         :enable-whats-app-templates="showWhatsappTemplates"
@@ -1514,6 +1653,7 @@ export default {
         :message="message"
         :portal-slug="connectedPortalSlug"
         :new-conversation-modal-active="newConversationModalActive"
+        @toggle-interactive="interactiveComposerOpen = !interactiveComposerOpen"
         @select-whatsapp-template="openWhatsappTemplateModal"
         @select-content-template="openContentTemplateModal"
         @toggle-insert-article="toggleInsertArticle"

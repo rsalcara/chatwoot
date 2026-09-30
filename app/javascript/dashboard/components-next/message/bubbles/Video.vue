@@ -5,12 +5,14 @@ import Icon from 'next/icon/Icon.vue';
 import { useSnakeCase } from 'dashboard/composables/useTransformKeys';
 import { useMessageContext } from '../provider.js';
 import GalleryView from 'dashboard/components/widgets/conversation/components/GalleryView.vue';
+import FormattedContent from './Text/FormattedContent.vue';
 import { ATTACHMENT_TYPES } from '../constants';
 
 const emit = defineEmits(['error']);
 const hasError = ref(false);
 const showGallery = ref(false);
-const { filteredCurrentChatAttachments, attachments } = useMessageContext();
+const { filteredCurrentChatAttachments, attachments, content } =
+  useMessageContext();
 
 const handleError = () => {
   hasError.value = true;
@@ -28,11 +30,11 @@ const isReel = computed(() => {
 
 <template>
   <BaseBubble
-    class="overflow-hidden p-3"
+    class="overflow-hidden p-3 !bg-n-solid-1"
     data-bubble-name="video"
     @click="showGallery = true"
   >
-    <div class="relative group rounded-lg overflow-hidden">
+    <div class="relative -mx-3 -mt-3 group overflow-hidden">
       <div
         v-if="isReel"
         class="absolute p-2 flex items-start justify-end right-0 pointer-events-none"
@@ -41,7 +43,7 @@ const isReel = computed(() => {
       </div>
       <video
         controls
-        class="rounded-lg skip-context-menu"
+        class="block w-full skip-context-menu"
         :src="attachment.dataUrl"
         :class="{
           'max-w-48': isReel,
@@ -50,6 +52,9 @@ const isReel = computed(() => {
         @click.stop
         @error="handleError"
       />
+    </div>
+    <div v-if="content" class="pt-2 text-sm text-n-slate-12">
+      <FormattedContent :content="content" />
     </div>
   </BaseBubble>
   <GalleryView

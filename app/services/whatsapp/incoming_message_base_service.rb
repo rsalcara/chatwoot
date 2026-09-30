@@ -191,7 +191,23 @@ class Whatsapp::IncomingMessageBaseService
       }.compact
     end
 
+    interactive_attrs = interactive_reply_attributes(message)
+    content_attrs[:interactive] = interactive_attrs if interactive_attrs
+
     content_attrs
+  end
+
+  def interactive_reply_attributes(message)
+    button_reply = message.dig(:interactive, :button_reply)
+    list_reply = message.dig(:interactive, :list_reply)
+    reply = button_reply || list_reply
+    return if reply.blank?
+
+    {
+      type: button_reply.present? ? 'button_reply' : 'list_reply',
+      id: reply[:id],
+      title: reply[:title]
+    }.compact
   end
 
   def update_contact_with_profile_name(contact_params)
