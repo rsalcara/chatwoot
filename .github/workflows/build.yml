@@ -68,7 +68,7 @@ jobs:
             if [ "${{ github.ref_name }}" = "master" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:latest"
             fi
-            VERSION=$(git ls-remote --tags https://github.com/chatwoot/chatwoot.git "v*" | awk -F/ '{print $NF}' | sort -V | tail -1)
+            VERSION=$(git ls-remote --tags https://github.com/chatwoot/chatwoot.git "v*" | awk -F/ '{print $NF}' | sed 's/\^{}$//' | sort -Vu | tail -1)
             if [ -n "$VERSION" ] && [ -z "$(git ls-remote --tags origin "refs/tags/$VERSION")" ]; then
               echo "${REGISTRY}/${IMAGE_NAME}:${VERSION}"
             fi
