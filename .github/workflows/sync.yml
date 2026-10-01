@@ -69,11 +69,6 @@ jobs:
             echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
           fi
 
-          else
-            echo "version=" >> "$GITHUB_OUTPUT"
-            echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
-          fi
-
       - name: Dispara o build da develop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
