@@ -36,7 +36,7 @@ jobs:
         run: |
           git remote add upstream https://github.com/chatwoot/chatwoot.git
           git fetch upstream develop
-          git fetch upstream 'refs/tags/v*:refs/tags/v*'
+          git fetch upstream '+refs/tags/v*:refs/tags/v*'
 
           BEFORE=$(git rev-parse HEAD)
           if git merge --no-edit upstream/develop; then
