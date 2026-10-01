@@ -33,6 +33,7 @@ jobs:
         id: merge
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: |
           git remote add upstream https://github.com/chatwoot/chatwoot.git
           git fetch upstream develop
@@ -72,5 +73,6 @@ jobs:
       - name: Dispara o build da develop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
         run: gh workflow run build.yml --ref develop
 
