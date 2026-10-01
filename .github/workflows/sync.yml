@@ -17,9 +17,6 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.merge.outputs.changed }}
-      version: ${{ steps.merge.outputs.version }}
     steps:
       - name: Checkout develop (histórico completo)
         uses: actions/checkout@v4
@@ -45,8 +42,7 @@ jobs:
           if git merge --no-edit upstream/develop; then
             AFTER=$(git rev-parse HEAD)
             if [ "$BEFORE" != "$AFTER" ]; then
-              echo "changed=true" >> "$GITHUB_OUTPUT"
-              git push origin develop
+                            git push origin develop
               echo "Pushed: $AFTER"
             else
               echo "Upstream sem novidades no develop."
@@ -66,17 +62,19 @@ jobs:
           if [ -n "$LATEST" ] && [ -z "$(git ls-remote --tags origin "refs/tags/$LATEST")" ]; then
             git tag -f "$LATEST" HEAD
             git push -f origin "refs/tags/$LATEST"
-            echo "version=$LATEST" >> "$GITHUB_OUTPUT"
-            echo "Nova versão upstream: $LATEST"
+                        echo "Nova versão upstream: $LATEST"
           else
             echo "version=" >> "$GITHUB_OUTPUT"
             echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
           fi
 
-  build:
-    needs: sync
-    if: needs.sync.outputs.changed == 'true' || needs.sync.outputs.version != ''
-    uses: ./.github/workflows/build.yml
-    permissions:
-      contents: read
-      packages: write
+          else
+            echo "version=" >> "$GITHUB_OUTPUT"
+            echo "Sem versão nova a publicar (latest: ${LATEST:-nenhuma})."
+          fi
+
+      - name: Dispara o build da develop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run build.yml --ref develop
+
